@@ -13,6 +13,12 @@ void printComm(char *text[], int words) {
 		printf("%d: %s\n", i,text[i]);
 	}
 }
+void printPath(char **pathArray, int words) {
+	for(int i=0; i<words; i++) {
+		printf("%d: %s\n", i,pathArray[i]);
+	}
+}
+
 
 int splitInput(char input[], char *text[]) {
 	char *token;
@@ -20,7 +26,7 @@ int splitInput(char input[], char *text[]) {
 	int i = 0;
 	int words = 0;
 
-	while ((token = strsep(&rest, " ")) != NULL) {
+	while ((token = strsep(&rest, " \t")) != NULL) {
 		if (*token != '\0') {  // Ignore empty tokens (in case of consecutive spaces)
 			text[i++] = token;
 			words++;
@@ -40,9 +46,64 @@ void throwError() {
 	write(STDERR_FILENO, error_message, strlen(error_message));
 }
 
+void addPath(char **pathArray, char *text[], int words){
+	//words="len" of text array and pathArray
+	for(int i=1;i<words;i++){
+		//allocate memory for each arg
+		pathArray[i] = malloc(40*sizeof(char));
+		strcpy(pathArray[i],text[i]);
+	}
+}
+
+int execCommand(char *command, char*text[],char**pathArray,int words){
+	for(int i =0;i<words;i++){
+		if(access(pathArray[i], X_OK)==0){ //found command and is exe
+		//make new process
+			int pid = fork();
+			if(pid<0){
+				printf("pid <0\n");
+				throwError();
+				return 1;
+			}
+			else if(pid ==0){ //child
+				printf("in child\n");
+				//check if execv returned
+				if(execv(pathArray[i],text)==-1){
+					printf("execv returned\n");
+					throwError();
+					exit(1);
+				}
+				
+			}
+			else{ //parent
+				int status;
+				printf("in parent\n");
+				wait(&status);
+				if(WIFEXITED(status)){
+					printf("Child process exited with status %d\n", WEXITSTATUS(status));
+				}
+				else{
+					printf("Child process did not exit normally\n");
+				}
+				return 0;
+			}
+
+		}
+	}
+}
+
 
 int main(int MainArgc, char *MainArgv[]){
 	char prompt[] = "witsshell> ";
+	char defPath[]="/bin/";
+	char other[] = "/usr/bin/";
+	//allocate memory for pathArray
+	int size = 10;
+	char **pathArray = malloc(size *sizeof(char));
+	pathArray[0] = malloc(10*sizeof(char));
+	pathArray[1] = malloc(10*sizeof(char));
+	strcpy(pathArray[0],defPath);
+	strcpy(pathArray[1],other);
 
 	//interactive mode --> start loop
 	if(MainArgc ==1) {
@@ -65,12 +126,13 @@ int main(int MainArgc, char *MainArgv[]){
 
 				//split input
 				const int words = splitInput(input, text);
+				
 
 				//get command
 				char *command = text[0];
 
 				//check "built-ins"
-				
+
 				if(strcmp(command,"exit")==0) {
 					if(words>1) {
 						throwError();
@@ -85,13 +147,33 @@ int main(int MainArgc, char *MainArgv[]){
 					}
 					else {
 						//do the thing
+
 					}
 				}
 				else if(strcmp(command, "path")==0) {
+					//change the path
+					//overwrite defPath 
+					//check if text[1] is NULL, then the only argument was "path" and path should be empty
+					if(text[1]==NULL){
+						strcpy(defPath,"");
+						printf("%s\n",defPath);
+					}
+					else{
+						//reallocate pathArray memory with size of words
+						pathArray = realloc(pathArray, words*sizeof(char *));
+						//add args to search path
+						addPath(pathArray,text,words);
+						printPath(pathArray,words);
+					}
+					//which path mus defpath be overwritten with???
+					//strcpy(defPath,text[1]);
+					//printf("arg is: %s\n defPth: %s\n",text[1],defPath);
+					//printf("%s",defPath);
 
 				}
 				else { //not "built-in"
-
+					printPath(pathArray, words);
+					execCommand(command,text,pathArray,words);
 				}
 			}
 			else { //EOF
@@ -113,8 +195,8 @@ int main(int MainArgc, char *MainArgv[]){
 		char *line = NULL;
 		char *inputLine[1024];
 		size_t len = 0;
-		ssize_t read;
-		while((read = getline(&line, &len, file)) != -1) {//for each line
+		ssize_t read = getline(&line, &len, file);
+		while(read!= -1) {//for each line
 			CheckAndRemoveChars(line);
 			const int len_words = splitInput(line,inputLine);
 
